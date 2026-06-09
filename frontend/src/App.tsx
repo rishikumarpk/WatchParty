@@ -5,6 +5,7 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Room from './pages/Room';
 import ForgotPassword from './pages/ForgotPassword';
+import HowToUse from './pages/HowToUse';
 
 function App() {
   return (
@@ -14,6 +15,7 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/how-to-use" element={<HowToUse />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/room/:roomId" element={<Room />} />
         <Route path="*" element={<Navigate to="/" replace />} />
