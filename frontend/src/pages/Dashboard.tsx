@@ -2,16 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { generateVideoHash } from '../utils/hash';
-import { Upload, Plus, LogIn, LogOut } from 'lucide-react';
+import { Upload, Plus, LogIn, LogOut, Play, Settings, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import AvatarPicker from '../components/AvatarPicker';
 
 const Dashboard: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
   const [roomCode, setRoomCode] = useState('');
   const [error, setError] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [user, setUser] = useState(JSON.parse(localStorage.getItem('user') || '{}'));
+  const [editDisplayName, setEditDisplayName] = useState(user.display_name || '');
+  const [editAvatarId, setEditAvatarId] = useState(user.avatar_id || 'avatar_1');
   const navigate = useNavigate();
-
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
 
   useEffect(() => {
     if (!localStorage.getItem('token')) {
@@ -23,6 +27,19 @@ const Dashboard: React.FC = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     navigate('/login');
+  };
+
+  const handleUpdateSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const { data } = await api.post('/auth/update', { display_name: editDisplayName, avatar_id: editAvatarId });
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      setUser(data.user);
+      setIsSettingsOpen(false);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to update settings');
+    }
   };
 
   const handleCreateRoom = async () => {
@@ -64,22 +81,43 @@ const Dashboard: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen p-8 bg-background">
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen bg-black text-textMain font-sans relative flex flex-col">
+      {/* Navbar */}
+      <nav className="fixed top-0 w-full h-20 bg-black/80 backdrop-blur-md border-b border-white/10 z-50 flex items-center justify-center text-white">
+        <div className="w-full max-w-[1200px] px-6 flex items-center justify-between">
+          <div className="flex items-center gap-8">
+            <Link to="/" className="flex items-center gap-2 font-bold text-xl tracking-tight">
+              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-white">
+                <Play size={18} fill="currentColor" />
+              </div>
+              WatchTogether
+            </Link>
+          </div>
+          <div className="flex items-center gap-4">
+            <button onClick={() => setIsSettingsOpen(true)} className="flex items-center space-x-2 text-textMuted hover:text-white transition-colors">
+              <Settings size={20} />
+              <span className="hidden sm:inline">Settings</span>
+            </button>
+            <button onClick={handleLogout} className="flex items-center space-x-2 text-textMuted hover:text-red-400 transition-colors">
+              <LogOut size={20} />
+              <span className="hidden sm:inline">Logout</span>
+            </button>
+          </div>
+        </div>
+      </nav>
+
+      {/* Main Content */}
+      <div className="relative z-10 flex-1 w-full max-w-4xl mx-auto p-4 pt-32">
         <header className="flex items-center justify-between mb-12">
           <div className="flex items-center space-x-4">
-            <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-primary">
+            <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-primary bg-surface/50">
               <img src={`https://api.dicebear.com/7.x/bottts/svg?seed=${user.avatar_id}`} alt="avatar" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-textMain">Welcome, {user.display_name}</h1>
+              <h1 className="text-2xl font-bold text-white">Welcome, {user.display_name}</h1>
               <p className="text-textMuted text-sm">Ready for a watch party?</p>
             </div>
           </div>
-          <button onClick={handleLogout} className="flex items-center space-x-2 text-textMuted hover:text-red-400 transition-colors">
-            <LogOut size={20} />
-            <span>Logout</span>
-          </button>
         </header>
 
         {error && <div className="p-4 mb-8 text-red-200 bg-red-900/50 border border-red-500/50 rounded-xl">{error}</div>}
@@ -143,6 +181,40 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Settings Modal */}
+      {isSettingsOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-surface/90 border border-white/10 rounded-2xl p-6 shadow-2xl relative">
+            <button onClick={() => setIsSettingsOpen(false)} className="absolute top-4 right-4 text-textMuted hover:text-white">
+              <X size={24} />
+            </button>
+            <h2 className="text-2xl font-bold text-white mb-6">Profile Settings</h2>
+            <form onSubmit={handleUpdateSettings} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-textMuted mb-2">Avatar</label>
+                <AvatarPicker selectedAvatar={editAvatarId} onSelect={setEditAvatarId} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-textMuted mb-2">Display Name</label>
+                <input
+                  type="text"
+                  value={editDisplayName}
+                  onChange={(e) => setEditDisplayName(e.target.value)}
+                  className="w-full px-4 py-3 bg-black/20 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary transition-all text-textMain"
+                  required
+                />
+              </div>
+              <button
+                type="submit"
+                className="w-full py-3 mt-4 font-semibold text-white transition-all bg-primary rounded-xl hover:bg-primaryHover shadow-lg shadow-primary/20 active:scale-95"
+              >
+                Save Changes
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

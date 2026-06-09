@@ -57,7 +57,7 @@ const Home: React.FC = () => {
           />
           <div className="absolute inset-0 bg-black/60 transition-all duration-700 group-hover:bg-black/40"></div>
           
-          <h1 className="relative z-10 text-white text-6xl md:text-8xl lg:text-[10rem] font-black tracking-tighter hover:scale-110 hover:text-primary transition-all duration-500 cursor-default select-none drop-shadow-2xl">
+          <h1 className="relative z-10 text-white text-6xl md:text-8xl lg:text-[10rem] font-black tracking-tighter hover:scale-110 transition-all duration-500 cursor-default select-none drop-shadow-2xl">
             WatchTogether
           </h1>
         </div>

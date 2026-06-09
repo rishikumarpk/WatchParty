@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { Play } from 'lucide-react';
 import api from '../services/api';
 
 const Login: React.FC = () => {
@@ -21,16 +22,45 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen p-4 bg-gradient-to-br from-background to-slate-900">
-      <div className="w-full max-w-md p-8 rounded-2xl bg-surface/50 backdrop-blur-xl border border-white/10 shadow-2xl">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary to-purple-400">
-            Watch Together
-          </h1>
-          <p className="text-textMuted mt-2">Sign in to join the party</p>
-        </div>
+    <div className="min-h-screen bg-black text-textMain font-sans relative flex flex-col">
+      {/* Background Image */}
+      <img 
+        src="/background.jpg" 
+        alt="Watch Party Background" 
+        className="absolute inset-0 w-full h-full object-cover"
+      />
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-[2px]"></div>
 
-        {error && <div className="p-3 mb-6 text-sm text-red-200 bg-red-900/50 border border-red-500/50 rounded-lg text-center">{error}</div>}
+      {/* Navbar */}
+      <nav className="fixed top-0 w-full h-20 bg-black/80 backdrop-blur-md border-b border-white/10 z-50 flex items-center justify-center text-white">
+        <div className="w-full max-w-[1200px] px-6 flex items-center justify-between">
+          <div className="flex items-center gap-8">
+            <Link to="/" className="flex items-center gap-2 font-bold text-xl tracking-tight">
+              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-white">
+                <Play size={18} fill="currentColor" />
+              </div>
+              WatchTogether
+            </Link>
+          </div>
+          <div>
+            <Link to="/register" className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primaryHover transition-colors font-medium shadow-sm shadow-primary/50">
+              Sign up
+            </Link>
+          </div>
+        </div>
+      </nav>
+
+      {/* Main Content */}
+      <div className="relative z-10 flex-1 flex items-center justify-center p-4 pt-24">
+        <div className="w-full max-w-md p-8 rounded-2xl bg-surface/80 backdrop-blur-xl border border-white/10 shadow-2xl">
+          <div className="text-center mb-8">
+            <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary to-white">
+              Watch Together
+            </h1>
+            <p className="text-textMuted mt-2">Sign in to join the party</p>
+          </div>
+
+          {error && <div className="p-3 mb-6 text-sm text-red-200 bg-red-900/50 border border-red-500/50 rounded-lg text-center">{error}</div>}
 
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
@@ -57,7 +87,7 @@ const Login: React.FC = () => {
           </div>
           <button
             type="submit"
-            className="w-full py-3 mt-4 font-semibold text-white transition-all bg-primary rounded-xl hover:bg-primaryHover hover:shadow-[0_0_20px_rgba(99,102,241,0.4)] active:scale-95"
+            className="w-full py-3 mt-4 font-semibold text-white transition-all bg-primary rounded-xl hover:bg-primaryHover shadow-lg shadow-primary/20 active:scale-95"
           >
             Sign In
           </button>
@@ -65,11 +95,12 @@ const Login: React.FC = () => {
 
         <p className="mt-6 text-center text-textMuted">
           Don't have an account?{' '}
-          <Link to="/register" className="text-primary hover:text-purple-400 transition-colors">
+          <Link to="/register" className="text-primary hover:text-primaryHover transition-colors">
             Create one
           </Link>
         </p>
       </div>
+    </div>
     </div>
   );
 };

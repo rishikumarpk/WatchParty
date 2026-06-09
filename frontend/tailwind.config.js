@@ -9,8 +9,8 @@ export default {
       colors: {
         background: '#0f172a', // Slate 900
         surface: '#1e293b', // Slate 800
-        primary: '#6366f1', // Indigo 500
-        primaryHover: '#4f46e5', // Indigo 600
+        primary: '#A7A868', // Sage Green
+        primaryHover: '#909156', // Sage Green Darker
         textMain: '#f8fafc', // Slate 50
         textMuted: '#94a3b8', // Slate 400
       }
