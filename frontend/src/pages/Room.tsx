@@ -39,7 +39,7 @@ const Room: React.FC = () => {
       setSocketConnected(true);
       socket.emit('JOIN_ROOM', { roomId, user });
 
-      socket.on('ROOM_STATE', (state: any) => {
+      socket.on('ROOM_STATE', () => {
         // We removed UserList, so we don't need to track users here anymore
       });
 
