@@ -7,6 +7,7 @@ interface Message {
   avatar: string;
   message: string;
   timestamp: string;
+  isSystem?: boolean;
 }
 
 interface ChatBoxProps {
@@ -28,10 +29,36 @@ const ChatBox: React.FC<ChatBoxProps> = ({ roomId }) => {
       setMessages((prev) => [...prev, msg]);
     };
 
+    const addSystemMessage = (text: string) => {
+      setMessages((prev) => [...prev, {
+        username: 'System',
+        avatar: 'bot',
+        message: text,
+        timestamp: new Date().toISOString(),
+        isSystem: true
+      }]);
+    };
+
+    const formatTime = (seconds: number) => {
+      const m = Math.floor(seconds / 60);
+      const s = Math.floor(seconds % 60);
+      return `${m}:${s < 10 ? '0' : ''}${s}`;
+    };
+
     socket.on('RECEIVE_MESSAGE', handleReceiveMessage);
+    socket.on('USER_JOINED', (u: any) => addSystemMessage(`${u.display_name} joined the room`));
+    socket.on('USER_LEFT', (u: any) => addSystemMessage(`${u.display_name} left the room`));
+    socket.on('VIDEO_PLAY', (data: any) => { if (data.user) addSystemMessage(`${data.user.display_name} played the video`); });
+    socket.on('VIDEO_PAUSE', (data: any) => { if (data.user) addSystemMessage(`${data.user.display_name} paused the video`); });
+    socket.on('VIDEO_SEEK', (data: any) => { if (data.user) addSystemMessage(`${data.user.display_name} skipped to ${formatTime(data.time)}`); });
 
     return () => {
       socket.off('RECEIVE_MESSAGE', handleReceiveMessage);
+      socket.off('USER_JOINED');
+      socket.off('USER_LEFT');
+      socket.off('VIDEO_PLAY');
+      socket.off('VIDEO_PAUSE');
+      socket.off('VIDEO_SEEK');
     };
   }, []);
 
@@ -60,21 +87,27 @@ const ChatBox: React.FC<ChatBoxProps> = ({ roomId }) => {
       
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((msg, idx) => (
-          <div key={idx} className={`flex gap-3 ${msg.username === user.display_name ? 'flex-row-reverse' : ''}`}>
-            <div className="w-8 h-8 rounded-full flex-shrink-0 bg-primary/20 overflow-hidden border border-primary/50">
-              <img src={`https://api.dicebear.com/7.x/bottts/svg?seed=${msg.avatar}`} alt="avatar" />
+          msg.isSystem ? (
+            <div key={idx} className="flex justify-center my-2">
+              <span className="bg-white/10 text-textMuted text-xs px-3 py-1 rounded-full">{msg.message}</span>
             </div>
-            <div className={`flex flex-col max-w-[75%] ${msg.username === user.display_name ? 'items-end' : 'items-start'}`}>
-              <span className="text-xs text-textMuted mb-1">{msg.username}</span>
-              <div className={`px-4 py-2 rounded-2xl ${
-                msg.username === user.display_name 
-                  ? 'bg-primary text-white rounded-tr-sm' 
-                  : 'bg-white/10 text-textMain rounded-tl-sm'
-              }`}>
-                {msg.message}
+          ) : (
+            <div key={idx} className={`flex gap-3 ${msg.username === user.display_name ? 'flex-row-reverse' : ''}`}>
+              <div className="w-8 h-8 rounded-full flex-shrink-0 bg-primary/20 overflow-hidden border border-primary/50">
+                <img src={`https://api.dicebear.com/7.x/bottts/svg?seed=${msg.avatar}`} alt="avatar" />
+              </div>
+              <div className={`flex flex-col max-w-[75%] ${msg.username === user.display_name ? 'items-end' : 'items-start'}`}>
+                <span className="text-xs text-textMuted mb-1">{msg.username}</span>
+                <div className={`px-4 py-2 rounded-2xl ${
+                  msg.username === user.display_name 
+                    ? 'bg-primary text-white rounded-tr-sm' 
+                    : 'bg-white/10 text-textMain rounded-tl-sm'
+                }`}>
+                  {msg.message}
+                </div>
               </div>
             </div>
-          </div>
+          )
         ))}
         <div ref={messagesEndRef} />
       </div>

@@ -1,29 +1,29 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useLocation, useNavigate } from 'react-router-dom';
+import { useParams, useLocation, useNavigate, Link } from 'react-router-dom';
 import { socketService } from '../services/socket';
-import { LogOut, Home } from 'lucide-react';
+import { LogOut, Play, MessageSquare, Copy, Check } from 'lucide-react';
 import VideoPlayer from '../components/VideoPlayer';
 import ChatBox from '../components/ChatBox';
-import UserList from '../components/UserList';
 
 const Room: React.FC = () => {
   const { roomId } = useParams<{ roomId: string }>();
   const location = useLocation();
   const navigate = useNavigate();
   const file = location.state?.file as File;
-  const [users, setUsers] = useState<any[]>([]);
   const [socketConnected, setSocketConnected] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(true);
+  const [copied, setCopied] = useState(false);
   const user = JSON.parse(localStorage.getItem('user') || '{}');
 
-  const handleLogout = () => {
+  const handleLeaveRoom = () => {
     socketService.disconnect();
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    navigate('/login');
+    navigate('/dashboard');
   };
 
-  const handleHome = () => {
-    navigate('/dashboard');
+  const copyRoomKey = () => {
+    navigator.clipboard.writeText(roomId || '');
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   useEffect(() => {
@@ -40,29 +40,15 @@ const Room: React.FC = () => {
       socket.emit('JOIN_ROOM', { roomId, user });
 
       socket.on('ROOM_STATE', (state: any) => {
-        if (state.users) {
-          setUsers(state.users.filter((u: any) => u.id !== user.id));
-        }
+        // We removed UserList, so we don't need to track users here anymore
       });
 
-      socket.on('USER_JOINED', (newUser: any) => {
-        setUsers((prev) => {
-          if (prev.find(u => u.id === newUser.id)) return prev;
-          return [...prev, newUser];
-        });
-      });
-
-      socket.on('USER_LEFT', (leftUser: any) => {
-        setUsers((prev) => prev.filter(u => u.id !== leftUser.id));
-      });
+      // System messages for join/left are handled in ChatBox now
     }
 
     return () => {
       if (socket) {
         socket.emit('LEAVE_ROOM', { roomId });
-        socket.off('ROOM_STATE');
-        socket.off('USER_JOINED');
-        socket.off('USER_LEFT');
       }
       setSocketConnected(false);
       socketService.disconnect();
@@ -72,30 +58,52 @@ const Room: React.FC = () => {
   if (!file || !roomId || !socketConnected) return null;
 
   return (
-    <div className="flex flex-col md:flex-row h-screen bg-background overflow-hidden">
-      {/* Main Content Area: 80% on Desktop */}
-      <div className="flex-1 flex flex-col h-[60vh] md:h-screen bg-black">
-        <div className="flex items-center justify-between bg-surface/50 border-b border-white/10 pr-4">
-          <div className="flex-1 overflow-hidden">
-            <UserList users={[{...user, isMe: true}, ...users]} />
-          </div>
-          <div className="flex items-center space-x-3 ml-2 flex-shrink-0">
-            <button onClick={handleHome} className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-textMain bg-white/5 hover:bg-white/10 hover:text-primary transition-colors rounded-xl border border-white/10">
-              <Home size={18} /> <span className="hidden sm:inline">Home</span>
-            </button>
-            <button onClick={handleLogout} className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-textMain bg-white/5 hover:bg-white/10 hover:text-red-400 transition-colors rounded-xl border border-white/10">
-              <LogOut size={18} /> <span className="hidden sm:inline">Logout</span>
+    <div className="flex flex-col h-screen bg-black text-textMain font-sans overflow-hidden">
+      {/* Navbar */}
+      <nav className="fixed top-0 w-full h-20 bg-black/80 backdrop-blur-md border-b border-white/10 z-50 flex items-center justify-between px-6 text-white shrink-0">
+        <div className="flex items-center gap-4">
+          <Link to="/" className="flex items-center gap-2 font-bold text-xl tracking-tight">
+            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-white">
+              <Play size={18} fill="currentColor" />
+            </div>
+            <span className="hidden sm:inline">WatchTogether</span>
+          </Link>
+          
+          <div className="ml-4 flex items-center bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 space-x-2">
+            <span className="text-textMuted text-sm font-medium">Room Key:</span>
+            <span className="text-white font-mono text-sm tracking-widest">{roomId}</span>
+            <button onClick={copyRoomKey} className="ml-2 text-textMuted hover:text-white transition-colors" title="Copy Room Key">
+              {copied ? <Check size={16} className="text-green-400" /> : <Copy size={16} />}
             </button>
           </div>
         </div>
-        <div className="flex-1 relative">
+
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={() => setIsChatOpen(!isChatOpen)}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium transition-colors ${isChatOpen ? 'bg-primary text-white' : 'bg-white/10 text-white hover:bg-white/20'}`}
+          >
+            <MessageSquare size={18} />
+            <span className="hidden md:inline">Chat</span>
+          </button>
+          <button onClick={handleLeaveRoom} className="flex items-center space-x-2 text-textMuted hover:text-red-400 transition-colors">
+            <LogOut size={18} />
+            <span className="hidden md:inline">Leave Room</span>
+          </button>
+        </div>
+      </nav>
+
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col md:flex-row pt-20 overflow-hidden">
+        {/* Video Player */}
+        <div className="flex-1 bg-black relative flex items-center justify-center">
           <VideoPlayer file={file} roomId={roomId} />
         </div>
-      </div>
 
-      {/* Chat Box: 20% on Desktop */}
-      <div className="h-[40vh] md:h-screen w-full md:w-80 lg:w-96 flex-shrink-0">
-        <ChatBox roomId={roomId} />
+        {/* Chat Box */}
+        <div className={`${isChatOpen ? 'flex' : 'hidden'} flex-col h-[40vh] md:h-full w-full md:w-80 lg:w-96 flex-shrink-0 border-t md:border-t-0 md:border-l border-white/10 bg-surface/50`}>
+          <ChatBox roomId={roomId} />
+        </div>
       </div>
     </div>
   );

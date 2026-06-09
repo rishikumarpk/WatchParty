@@ -37,3 +37,12 @@ model Message {
   room        Room     @relation(fields: [room_id], references: [id])
   user        User     @relation(fields: [user_id], references: [id])
 }
+
+model VerificationCode {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  code      String
+  data      String?  
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}

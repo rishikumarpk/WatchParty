@@ -18,8 +18,6 @@ const Home: React.FC = () => {
               WatchTogether
             </div>
             <div className="hidden md:flex items-center gap-4">
-              <button className="px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors font-medium">How to Use</button>
-              <button className="px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors font-medium">About Us</button>
             </div>
           </div>
           <div className="hidden md:flex">
@@ -37,9 +35,7 @@ const Home: React.FC = () => {
 
       {/* Mobile Menu */}
       {mobileMenuOpen && (
-        <div className="md:hidden fixed top-20 left-0 w-full bg-white border-b border-gray-100 z-40 p-4 flex flex-col gap-4 shadow-lg">
-          <button className="px-4 py-3 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors font-medium text-left">How to Use</button>
-          <button className="px-4 py-3 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors font-medium text-left">About Us</button>
+        <div className="md:hidden fixed top-20 left-0 w-full bg-black border-b border-white/10 z-40 p-4 flex flex-col gap-4 shadow-lg">
           <Link to="/login" className="px-4 py-3 bg-primary text-white rounded-lg hover:bg-primaryHover transition-colors font-medium text-center">
             Sign in / Sign up
           </Link>

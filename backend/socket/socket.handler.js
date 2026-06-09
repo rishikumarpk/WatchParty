@@ -56,7 +56,7 @@ module.exports = (io) => {
       });
     });
 
-    socket.on('VIDEO_PLAY', ({ roomId, time, timestamp }) => {
+    socket.on('VIDEO_PLAY', ({ roomId, time, timestamp, user }) => {
       const state = roomsState[roomId];
       if (state) {
         state.playing = true;
@@ -65,29 +65,30 @@ module.exports = (io) => {
         state.updatedAt = Date.now(); // We use our server time to sync
         io.to(roomId).emit('VIDEO_PLAY', {
           time,
-          serverTimestamp: Date.now()
+          serverTimestamp: Date.now(),
+          user
         });
       }
     });
 
-    socket.on('VIDEO_PAUSE', ({ roomId, time }) => {
+    socket.on('VIDEO_PAUSE', ({ roomId, time, user }) => {
       const state = roomsState[roomId];
       if (state) {
         state.playing = false;
         state.currentTime = time;
         state.baseTime = time;
         state.updatedAt = Date.now();
-        io.to(roomId).emit('VIDEO_PAUSE', { time });
+        io.to(roomId).emit('VIDEO_PAUSE', { time, user });
       }
     });
 
-    socket.on('VIDEO_SEEK', ({ roomId, time }) => {
+    socket.on('VIDEO_SEEK', ({ roomId, time, user }) => {
       const state = roomsState[roomId];
       if (state) {
         state.currentTime = time;
         state.baseTime = time;
         state.updatedAt = Date.now();
-        io.to(roomId).emit('VIDEO_SEEK', { time, serverTimestamp: Date.now() });
+        io.to(roomId).emit('VIDEO_SEEK', { time, serverTimestamp: Date.now(), user });
       }
     });
 

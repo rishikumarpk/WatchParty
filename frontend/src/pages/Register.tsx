@@ -12,20 +12,42 @@ const Register: React.FC = () => {
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
-  const handleRegister = async (e: React.FormEvent) => {
+  const [step, setStep] = useState(1);
+  const [code, setCode] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const handleSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsProcessing(true);
+    setError('');
     try {
-      const { data } = await api.post('/auth/register', {
+      await api.post('/auth/send-register-code', {
         email,
         password,
         display_name: displayName,
         avatar_id: avatarId
       });
+      setStep(2);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to send code');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleVerifyRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsProcessing(true);
+    setError('');
+    try {
+      const { data } = await api.post('/auth/verify-register', { email, code });
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
       navigate('/dashboard');
     } catch (err: any) {
       setError(err.response?.data?.error || 'Registration failed');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -69,52 +91,85 @@ const Register: React.FC = () => {
 
           {error && <div className="p-3 mb-4 text-sm text-red-200 bg-red-900/50 border border-red-500/50 rounded-lg text-center">{error}</div>}
 
-        <form onSubmit={handleRegister} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-textMuted mb-1">Choose Avatar</label>
-            <AvatarPicker selectedAvatar={avatarId} onSelect={setAvatarId} />
-          </div>
+        {step === 1 ? (
+          <form onSubmit={handleSendCode} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-textMuted mb-1">Choose Avatar</label>
+              <AvatarPicker selectedAvatar={avatarId} onSelect={setAvatarId} />
+            </div>
 
-          <div>
-            <label className="block text-sm font-medium text-textMuted mb-1">Display Name</label>
-            <input
-              type="text"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              className="w-full px-4 py-3 bg-black/20 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary transition-all text-textMain"
-              placeholder="MovieBuff99"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-textMuted mb-1">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 bg-black/20 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary transition-all text-textMain"
-              placeholder="you@example.com"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-textMuted mb-1">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 bg-black/20 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary transition-all text-textMain"
-              placeholder="••••••••"
-              required
-            />
-          </div>
-          <button
-            type="submit"
-            className="w-full py-3 mt-2 font-semibold text-white transition-all bg-primary rounded-xl hover:bg-primaryHover shadow-lg shadow-primary/20 active:scale-95"
-          >
-            Sign Up
-          </button>
-        </form>
+            <div>
+              <label className="block text-sm font-medium text-textMuted mb-1">Display Name</label>
+              <input
+                type="text"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                className="w-full px-4 py-3 bg-black/20 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary transition-all text-textMain"
+                placeholder="MovieBuff99"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-textMuted mb-1">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-4 py-3 bg-black/20 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary transition-all text-textMain"
+                placeholder="you@example.com"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-textMuted mb-1">Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-4 py-3 bg-black/20 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary transition-all text-textMain"
+                placeholder="••••••••"
+                required
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={isProcessing}
+              className="w-full py-3 mt-2 font-semibold text-white transition-all bg-primary rounded-xl hover:bg-primaryHover shadow-lg shadow-primary/20 active:scale-95 disabled:opacity-50"
+            >
+              {isProcessing ? 'Sending Code...' : 'Continue'}
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleVerifyRegister} className="space-y-4">
+            <p className="text-textMuted text-center mb-4">We sent a 6-digit code to <strong>{email}</strong></p>
+            <div>
+              <label className="block text-sm font-medium text-textMuted mb-1">Verification Code</label>
+              <input
+                type="text"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                className="w-full px-4 py-3 bg-black/20 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary transition-all text-textMain text-center tracking-widest text-lg font-mono"
+                placeholder="000000"
+                maxLength={6}
+                required
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={isProcessing}
+              className="w-full py-3 mt-2 font-semibold text-white transition-all bg-primary rounded-xl hover:bg-primaryHover shadow-lg shadow-primary/20 active:scale-95 disabled:opacity-50"
+            >
+              {isProcessing ? 'Verifying...' : 'Verify & Register'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setStep(1)}
+              className="w-full py-2 mt-2 text-sm text-textMuted hover:text-white transition-colors"
+            >
+              Go back
+            </button>
+          </form>
+        )}
 
         <p className="mt-6 text-center text-textMuted">
           Already have an account?{' '}

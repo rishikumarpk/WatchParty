@@ -10,6 +10,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ file, roomId }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [videoUrl, setVideoUrl] = useState<string>('');
   const isRemoteUpdateRef = useRef(false);
+  const ignoreSeekUntilRef = useRef<number>(0);
 
   useEffect(() => {
     const url = URL.createObjectURL(file);
@@ -25,6 +26,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ file, roomId }) => {
     // --- Socket Listeners ---
     const handleRoomState = (state: any) => {
       isRemoteUpdateRef.current = true;
+      ignoreSeekUntilRef.current = Date.now() + 1000;
       
       const delay = (Date.now() - state.serverTimestamp) / 1000;
       const targetTime = state.currentTime + delay;
@@ -42,6 +44,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ file, roomId }) => {
 
     const handlePlay = (data: any) => {
       isRemoteUpdateRef.current = true;
+      ignoreSeekUntilRef.current = Date.now() + 1000;
       const delay = (Date.now() - data.serverTimestamp) / 1000;
       video.currentTime = data.time + delay;
       video.play().catch(console.error);
@@ -50,6 +53,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ file, roomId }) => {
 
     const handlePause = (data: any) => {
       isRemoteUpdateRef.current = true;
+      ignoreSeekUntilRef.current = Date.now() + 1000;
       video.currentTime = data.time;
       video.pause();
       setTimeout(() => { isRemoteUpdateRef.current = false; }, 100);
@@ -57,6 +61,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ file, roomId }) => {
 
     const handleSeek = (data: any) => {
       isRemoteUpdateRef.current = true;
+      ignoreSeekUntilRef.current = Date.now() + 1000;
       const delay = (Date.now() - data.serverTimestamp) / 1000;
       video.currentTime = data.time + delay;
       setTimeout(() => { isRemoteUpdateRef.current = false; }, 100);
@@ -72,6 +77,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ file, roomId }) => {
       if (diff > 2) {
         // Large difference -> hard seek
         isRemoteUpdateRef.current = true;
+        ignoreSeekUntilRef.current = Date.now() + 1000;
         video.currentTime = serverTime;
         setTimeout(() => { isRemoteUpdateRef.current = false; }, 100);
       } else if (diff > 0.3) {
@@ -99,12 +105,15 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ file, roomId }) => {
   }, []);
 
   // --- Video DOM Listeners ---
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+
   const onPlay = () => {
     if (isRemoteUpdateRef.current) return;
     socketService.socket?.emit('VIDEO_PLAY', {
       roomId,
       time: videoRef.current?.currentTime,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      user
     });
   };
 
@@ -112,15 +121,17 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ file, roomId }) => {
     if (isRemoteUpdateRef.current) return;
     socketService.socket?.emit('VIDEO_PAUSE', {
       roomId,
-      time: videoRef.current?.currentTime
+      time: videoRef.current?.currentTime,
+      user
     });
   };
 
   const onSeeked = () => {
-    if (isRemoteUpdateRef.current) return;
+    if (isRemoteUpdateRef.current || Date.now() < ignoreSeekUntilRef.current) return;
     socketService.socket?.emit('VIDEO_SEEK', {
       roomId,
-      time: videoRef.current?.currentTime
+      time: videoRef.current?.currentTime,
+      user
     });
   };
 
