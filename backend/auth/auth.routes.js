@@ -17,6 +17,11 @@ const transporter = nodemailer.createTransport({
   auth: {
     user: process.env.EMAIL,
     pass: process.env.APP_PWD
+  },
+  // Force Node.js to use IPv4 for DNS resolution to fix ENETUNREACH IPv6 errors
+  family: 4,
+  tls: {
+    rejectUnauthorized: false
   }
 });
 
