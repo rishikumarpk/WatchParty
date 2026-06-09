@@ -4,26 +4,50 @@ const jwt = require('jsonwebtoken');
 const prisma = require('../prisma/client');
 const authMiddleware = require('./auth.middleware');
 const { Resend } = require('resend'); // Just to keep it unused or remove it completely
-const nodemailer = require('nodemailer');
+const { google } = require('googleapis');
 const router = express.Router();
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false, // Use STARTTLS instead of SSL
-  requireTLS: true,
-  auth: {
-    user: process.env.EMAIL,
-    pass: process.env.APP_PWD
-  },
-  // Force Node.js to use IPv4 for DNS resolution to fix ENETUNREACH IPv6 errors
-  family: 4,
-  tls: {
-    rejectUnauthorized: false
-  }
-});
+const sendEmailHTTP = async (to, subject, html) => {
+  const oauth2Client = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    "https://developers.google.com/oauthplayground"
+  );
+  
+  oauth2Client.setCredentials({
+    refresh_token: process.env.GOOGLE_REFRESH_TOKEN
+  });
+
+  const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+  
+  const utf8Subject = `=?utf-8?B?${Buffer.from(subject).toString('base64')}?=`;
+  const messageParts = [
+    `From: WatchTogether <${process.env.EMAIL}>`,
+    `To: ${to}`,
+    'Content-Type: text/html; charset=utf-8',
+    'MIME-Version: 1.0',
+    `Subject: ${utf8Subject}`,
+    '',
+    html
+  ];
+  const message = messageParts.join('\n');
+  
+  const encodedMessage = Buffer.from(message)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+    
+  const res = await gmail.users.messages.send({
+    userId: 'me',
+    requestBody: {
+      raw: encodedMessage,
+    },
+  });
+  return res.data;
+};
 
 const generateCode = () => Math.floor(100000 + Math.random() * 900000).toString();
 
@@ -76,21 +100,20 @@ router.post('/send-register-code', async (req, res) => {
       create: { email, code, data, expiresAt }
     });
 
-    if (!process.env.APP_PWD) {
-      console.error('Missing APP_PWD in .env file.');
-      return res.status(500).json({ error: 'Email service configuration error. Missing App Password.' });
+    if (!process.env.GOOGLE_REFRESH_TOKEN) {
+      console.error('Missing GOOGLE_REFRESH_TOKEN in .env file.');
+      return res.status(500).json({ error: 'Email service configuration error. Missing Google OAuth Credentials.' });
     }
 
     try {
-      await transporter.sendMail({
-        from: '"WatchTogether" <pkrishikumar2468@gmail.com>',
-        to: email,
-        subject: 'Verify your WatchTogether Account',
-        html: RegisterEmailHtml(email, 'Verify your WatchTogether Account', display_name, code)
-      });
+      await sendEmailHTTP(
+        email, 
+        'Verify your WatchTogether Account', 
+        RegisterEmailHtml(email, 'Verify your WatchTogether Account', display_name, code)
+      );
     } catch (error) {
-      console.error('Nodemailer Error:', error);
-      return res.status(500).json({ error: 'Email service configuration error or invalid credentials.' });
+      console.error('Google API Error:', error);
+      return res.status(500).json({ error: 'Failed to send email via Google API.' });
     }
 
     res.json({ success: true, message: 'Verification code sent' });
@@ -165,21 +188,20 @@ router.post('/forgot-password', async (req, res) => {
       create: { email, code, data: null, expiresAt }
     });
 
-    if (!process.env.APP_PWD) {
-      console.error('Missing APP_PWD in .env file.');
-      return res.status(500).json({ error: 'Email service configuration error. Missing App Password.' });
+    if (!process.env.GOOGLE_REFRESH_TOKEN) {
+      console.error('Missing GOOGLE_REFRESH_TOKEN in .env file.');
+      return res.status(500).json({ error: 'Email service configuration error. Missing Google OAuth Credentials.' });
     }
 
     try {
-      await transporter.sendMail({
-        from: '"WatchTogether" <pkrishikumar2468@gmail.com>',
-        to: email,
-        subject: 'Reset your WatchTogether Password',
-        html: PWDEmailHtml(email, 'Reset your WatchTogether Password', user.display_name, code)
-      });
+      await sendEmailHTTP(
+        email, 
+        'Reset your WatchTogether Password', 
+        PWDEmailHtml(email, 'Reset your WatchTogether Password', user.display_name, code)
+      );
     } catch (error) {
-      console.error('Nodemailer Error:', error);
-      return res.status(500).json({ error: 'Email service configuration error or invalid credentials.' });
+      console.error('Google API Error:', error);
+      return res.status(500).json({ error: 'Failed to send email via Google API.' });
     }
 
     res.json({ success: true, message: 'Reset code sent' });
