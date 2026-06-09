@@ -1,3 +1,6 @@
 ##ENV Files
 
 .env
+
+# Dependencies
+node_modules/
