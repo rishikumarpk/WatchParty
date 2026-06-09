@@ -1,6 +1,7 @@
 import { io, Socket } from 'socket.io-client';
+import { API_BASE_URL } from './api';
 
-const URL = 'http://localhost:5001';
+const URL = API_BASE_URL;
 
 class SocketService {
   public socket: Socket | null = null;
