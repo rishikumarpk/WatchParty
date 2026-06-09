@@ -10,7 +10,10 @@ const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET;
 
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false, // Use STARTTLS instead of SSL
+  requireTLS: true,
   auth: {
     user: process.env.EMAIL,
     pass: process.env.APP_PWD
