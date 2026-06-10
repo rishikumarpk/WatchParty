@@ -39,6 +39,11 @@ const Room: React.FC = () => {
       setSocketConnected(true);
       socket.emit('JOIN_ROOM', { roomId, user });
 
+      // Re-join the room automatically if the socket disconnects and reconnects
+      socket.on('connect', () => {
+        socket.emit('JOIN_ROOM', { roomId, user });
+      });
+
       socket.on('ROOM_STATE', () => {
         // We removed UserList, so we don't need to track users here anymore
       });
