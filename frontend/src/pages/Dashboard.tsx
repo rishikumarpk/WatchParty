@@ -6,7 +6,7 @@ import { Upload, Plus, LogIn, LogOut, Play, Settings, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import AvatarPicker from '../components/AvatarPicker';
 
-import { supabase } from '../services/supabase';
+import { supabase, syncWithBackend } from '../services/supabase';
 
 const Dashboard: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
@@ -20,9 +20,24 @@ const Dashboard: React.FC = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!localStorage.getItem('token')) {
+    const checkAuth = async () => {
+      if (localStorage.getItem('token')) return;
+
+      // Check if user landed directly from an email verification link
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        try {
+          const syncData = await syncWithBackend(session);
+          setUser(syncData.user);
+          return;
+        } catch (err) {
+          console.error('Failed to sync session on dashboard landing:', err);
+        }
+      }
       navigate('/login');
-    }
+    };
+
+    checkAuth();
   }, [navigate]);
 
   const handleLogout = async () => {

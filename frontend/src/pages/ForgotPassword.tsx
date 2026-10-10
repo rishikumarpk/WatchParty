@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Play, Mail, KeyRound, Lock, Eye, EyeOff, ArrowRight, RotateCw, AlertTriangle, ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { Play, Mail, Lock, Eye, EyeOff, ArrowRight, RotateCw, AlertTriangle, CheckCircle2, MailCheck, ExternalLink } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
 
 const ForgotPassword: React.FC = () => {
-  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [email, setEmail] = useState('');
-  const [otp, setOtp] = useState('');
+  const [isEmailSent, setIsEmailSent] = useState(false);
+  const [isRecoveryMode, setIsRecoveryMode] = useState(false);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -16,8 +16,28 @@ const ForgotPassword: React.FC = () => {
   const [isSuccess, setIsSuccess] = useState(false);
   const navigate = useNavigate();
 
-  // Step 1: Send reset code to email
-  const handleSendResetCode = async (e: React.FormEvent) => {
+  // Listen for Supabase PASSWORD_RECOVERY event when user clicks the reset link in email
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsRecoveryMode(true);
+      }
+    });
+
+    // Also check if current URL hash or session indicates recovery
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session && window.location.hash.includes('type=recovery')) {
+        setIsRecoveryMode(true);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  // Step 1: Send reset link to email
+  const handleSendResetLink = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim()) return;
 
@@ -37,44 +57,17 @@ const ForgotPassword: React.FC = () => {
 
       if (sbError) throw sbError;
 
-      setStep(2);
-      setInfoMessage(`We sent a 6-digit recovery code to ${email.trim()}`);
+      setIsEmailSent(true);
+      setInfoMessage(`We sent a password reset link to ${email.trim()}`);
     } catch (err: any) {
       console.error('Password reset request error:', err);
-      setError(err.message || 'Failed to send reset code');
+      setError(err.message || 'Failed to send reset link');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Step 2: Verify the recovery OTP code
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!otp.trim()) return;
-
-    setIsLoading(true);
-    setError('');
-
-    try {
-      const { error: sbError } = await supabase.auth.verifyOtp({
-        email: email.trim(),
-        token: otp.trim(),
-        type: 'recovery',
-      });
-
-      if (sbError) throw sbError;
-
-      setStep(3);
-      setInfoMessage('Code verified. You can now set your new password.');
-    } catch (err: any) {
-      console.error('Verify recovery code error:', err);
-      setError(err.message || 'Invalid or expired recovery code');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Step 3: Set new password
+  // Step 2: Set new password (after clicking reset link)
   const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!password) return;
@@ -100,7 +93,6 @@ const ForgotPassword: React.FC = () => {
       if (sbError) throw sbError;
 
       setIsSuccess(true);
-      // Sign out of recovery session so they can login freshly with new password
       await supabase.auth.signOut();
     } catch (err: any) {
       console.error('Update password error:', err);
@@ -149,20 +141,20 @@ const ForgotPassword: React.FC = () => {
             <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary via-white to-white">
               {isSuccess
                 ? 'Password Updated!'
-                : step === 1
-                ? 'Reset Password'
-                : step === 2
-                ? 'Verify Code'
-                : 'New Password'}
+                : isRecoveryMode
+                ? 'Set New Password'
+                : isEmailSent
+                ? 'Check Your Email'
+                : 'Reset Password'}
             </h1>
             <p className="text-textMuted text-sm mt-1.5">
               {isSuccess
                 ? 'Your password has been changed successfully'
-                : step === 1
-                ? 'Enter your email to receive a recovery code'
-                : step === 2
-                ? `Enter the 6-digit code sent to ${email}`
-                : 'Create your new strong password'}
+                : isRecoveryMode
+                ? 'Enter your new strong password below'
+                : isEmailSent
+                ? 'Click the reset link in your email'
+                : 'Enter your email to receive a password recovery link'}
             </p>
           </div>
 
@@ -206,98 +198,8 @@ const ForgotPassword: React.FC = () => {
                 Sign In Now
               </button>
             </div>
-          ) : step === 1 ? (
-            /* Step 1: Email Form */
-            <form onSubmit={handleSendResetCode} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-textMuted mb-1.5">Email Address</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-textMuted">
-                    <Mail size={18} />
-                  </div>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 bg-black/30 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-textMain text-sm placeholder:text-textMuted/50"
-                    placeholder="you@example.com"
-                    required
-                    autoFocus
-                  />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full py-3.5 mt-2 font-semibold text-white transition-all bg-primary rounded-xl hover:bg-primaryHover shadow-lg shadow-primary/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {isLoading ? (
-                  <>
-                    <RotateCw size={18} className="animate-spin" />
-                    <span>Sending Code...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Send Reset Code</span>
-                    <ArrowRight size={18} />
-                  </>
-                )}
-              </button>
-            </form>
-          ) : step === 2 ? (
-            /* Step 2: Code verification */
-            <form onSubmit={handleVerifyOtp} className="space-y-4">
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-sm font-medium text-textMuted">6-Digit Code</label>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStep(1);
-                    setOtp('');
-                    setError('');
-                  }}
-                  className="text-xs text-primary hover:text-primaryHover transition-colors flex items-center gap-1"
-                >
-                  <ArrowLeft size={12} />
-                  <span>Change email</span>
-                </button>
-              </div>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-textMuted">
-                  <KeyRound size={18} />
-                </div>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  maxLength={6}
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value.replace(/[^0-9]/g, ''))}
-                  className="w-full pl-10 pr-4 py-3 bg-black/30 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-textMain tracking-[0.4em] font-mono text-center text-xl placeholder:text-textMuted/30"
-                  placeholder="••••••"
-                  required
-                  autoFocus
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={isLoading || otp.length < 6}
-                className="w-full py-3.5 mt-2 font-semibold text-white transition-all bg-primary rounded-xl hover:bg-primaryHover shadow-lg shadow-primary/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {isLoading ? (
-                  <>
-                    <RotateCw size={18} className="animate-spin" />
-                    <span>Verifying...</span>
-                  </>
-                ) : (
-                  <span>Verify Code</span>
-                )}
-              </button>
-            </form>
-          ) : (
-            /* Step 3: New Password Form */
+          ) : isRecoveryMode ? (
+            /* Set New Password Form (triggered by clicking link in email) */
             <form onSubmit={handleUpdatePassword} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-textMuted mb-1.5">New Password</label>
@@ -354,7 +256,86 @@ const ForgotPassword: React.FC = () => {
                     <span>Updating Password...</span>
                   </>
                 ) : (
-                  <span>Update Password</span>
+                  <span>Save New Password</span>
+                )}
+              </button>
+            </form>
+          ) : isEmailSent ? (
+            /* Check Email Screen */
+            <div className="text-center py-4 space-y-6">
+              <div className="w-20 h-20 mx-auto rounded-3xl bg-primary/15 border border-primary/30 flex items-center justify-center text-primary shadow-xl shadow-primary/10 relative">
+                <MailCheck size={40} />
+                <div className="absolute -top-1 -right-1 w-4 h-4 bg-primary rounded-full animate-ping"></div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm text-textMuted">
+                  We've sent a password reset link to:
+                </p>
+                <p className="font-semibold text-white text-base bg-black/30 py-2 px-4 rounded-xl border border-white/5 inline-block">
+                  {email}
+                </p>
+                <p className="text-xs text-textMuted/80 pt-1 leading-relaxed">
+                  Please click the link inside your email to choose your new password.
+                </p>
+              </div>
+
+              <div className="pt-2 space-y-3">
+                <a
+                  href="https://mail.google.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-3.5 font-semibold text-white transition-all bg-primary rounded-xl hover:bg-primaryHover shadow-lg shadow-primary/20 active:scale-95 flex items-center justify-center gap-2"
+                >
+                  <span>Open Gmail</span>
+                  <ExternalLink size={16} />
+                </a>
+
+                <button
+                  type="button"
+                  onClick={() => setIsEmailSent(false)}
+                  className="text-xs text-textMuted hover:text-white transition-colors"
+                >
+                  Try another email
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* Request Reset Link Form */
+            <form onSubmit={handleSendResetLink} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-textMuted mb-1.5">Email Address</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-textMuted">
+                    <Mail size={18} />
+                  </div>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 bg-black/30 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-textMain text-sm placeholder:text-textMuted/50"
+                    placeholder="you@example.com"
+                    required
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full py-3.5 mt-2 font-semibold text-white transition-all bg-primary rounded-xl hover:bg-primaryHover shadow-lg shadow-primary/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {isLoading ? (
+                  <>
+                    <RotateCw size={18} className="animate-spin" />
+                    <span>Sending Link...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Send Reset Link</span>
+                    <ArrowRight size={18} />
+                  </>
                 )}
               </button>
             </form>

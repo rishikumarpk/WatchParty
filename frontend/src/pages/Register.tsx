@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Play, Mail, User, Lock, Eye, EyeOff, KeyRound, ArrowRight, RotateCw, AlertTriangle, ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { Play, Mail, User, Lock, Eye, EyeOff, ArrowRight, RotateCw, AlertTriangle, CheckCircle2, MailCheck, ExternalLink } from 'lucide-react';
 import AvatarPicker from '../components/AvatarPicker';
 import { supabase, isSupabaseConfigured, syncWithBackend } from '../services/supabase';
 
@@ -10,15 +10,14 @@ const Register: React.FC = () => {
   const [displayName, setDisplayName] = useState('');
   const [avatarId, setAvatarId] = useState('avatar_1');
   const [showPassword, setShowPassword] = useState(false);
-  const [otp, setOtp] = useState('');
-  const [step, setStep] = useState<1 | 2>(1);
+  const [isSubmitted, setIsSubmitted] = useState(false);
   const [error, setError] = useState('');
   const [infoMessage, setInfoMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
   const navigate = useNavigate();
 
-  // Listen for Supabase session changes (e.g. if user clicks confirmation link directly in email)
+  // Listen for Supabase session changes (e.g. user clicks verification link in email)
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session && (event === 'SIGNED_IN' || event === 'USER_UPDATED')) {
@@ -42,7 +41,7 @@ const Register: React.FC = () => {
     };
   }, [navigate, displayName, avatarId]);
 
-  // Countdown timer for OTP resend
+  // Countdown timer for resending verification email
   useEffect(() => {
     if (resendCooldown <= 0) return;
     const timer = setInterval(() => {
@@ -51,7 +50,6 @@ const Register: React.FC = () => {
     return () => clearInterval(timer);
   }, [resendCooldown]);
 
-  // Step 1: Create account with password and trigger email OTP verification
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !displayName.trim() || !password) return;
@@ -97,10 +95,10 @@ const Register: React.FC = () => {
         return;
       }
 
-      // Otherwise, an OTP code was sent to the email
-      setStep(2);
+      // Otherwise, the verification email was sent
+      setIsSubmitted(true);
       setResendCooldown(60);
-      setInfoMessage(`Verification code sent to ${email.trim()}`);
+      setInfoMessage(`Verification link sent to ${email.trim()}`);
     } catch (err: any) {
       console.error('Registration error:', err);
       setError(err.message || 'Failed to register account');
@@ -109,60 +107,7 @@ const Register: React.FC = () => {
     }
   };
 
-  // Step 2: Verify email OTP code
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!otp.trim()) return;
-
-    setIsLoading(true);
-    setError('');
-
-    try {
-      // First try signup verification
-      let { data, error: sbError } = await supabase.auth.verifyOtp({
-        email: email.trim(),
-        token: otp.trim(),
-        type: 'signup',
-      });
-
-      // If type 'signup' fails, fallback to 'email' type
-      if (sbError) {
-        const fallback = await supabase.auth.verifyOtp({
-          email: email.trim(),
-          token: otp.trim(),
-          type: 'email',
-        });
-        if (!fallback.error) {
-          data = fallback.data;
-          sbError = null;
-        }
-      }
-
-      if (sbError) {
-        throw sbError;
-      }
-
-      if (!data?.session) {
-        throw new Error('Verification completed, but no session returned. Please sign in.');
-      }
-
-      // Synchronize with database and obtain application token
-      await syncWithBackend(data.session, {
-        display_name: displayName.trim(),
-        avatar_id: avatarId,
-      });
-
-      navigate('/dashboard');
-    } catch (err: any) {
-      console.error('OTP verify error:', err);
-      setError(err.response?.data?.error || err.message || 'Invalid or expired verification code');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Resend OTP code
-  const handleResendCode = async () => {
+  const handleResendLink = async () => {
     if (resendCooldown > 0 || isLoading) return;
 
     setIsLoading(true);
@@ -171,14 +116,17 @@ const Register: React.FC = () => {
       const { error: sbError } = await supabase.auth.resend({
         type: 'signup',
         email: email.trim(),
+        options: {
+          emailRedirectTo: `${window.location.origin}/dashboard`,
+        },
       });
 
       if (sbError) throw sbError;
 
       setResendCooldown(60);
-      setInfoMessage('A new verification code has been sent to your email.');
+      setInfoMessage('A fresh verification link has been sent to your email.');
     } catch (err: any) {
-      setError(err.message || 'Failed to resend code');
+      setError(err.message || 'Failed to resend verification link');
     } finally {
       setIsLoading(false);
     }
@@ -217,22 +165,20 @@ const Register: React.FC = () => {
       {/* Main Content */}
       <div className="relative z-10 flex-1 flex items-center justify-center p-4 pt-24 pb-12">
         <div className="w-full max-w-md p-8 rounded-2xl bg-surface/85 backdrop-blur-xl border border-white/10 shadow-2xl relative overflow-hidden">
-          {/* Subtle Accent Glow */}
           <div className="absolute -top-12 -right-12 w-36 h-36 bg-primary/20 rounded-full blur-2xl pointer-events-none"></div>
 
-          {/* Header */}
+          {/* Heading */}
           <div className="text-center mb-6">
             <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary via-white to-white">
-              {step === 1 ? 'Create Account' : 'Verify Email'}
+              {isSubmitted ? 'Check Your Email' : 'Create Account'}
             </h1>
             <p className="text-textMuted text-sm mt-1.5">
-              {step === 1
-                ? 'Create your password & verify your email with OTP'
-                : `Enter the 6-digit code sent to ${email}`}
+              {isSubmitted
+                ? 'We sent a confirmation link to your inbox'
+                : 'Choose your avatar, enter your details and password'}
             </p>
           </div>
 
-          {/* Setup Alert if Supabase Credentials are missing */}
           {!isSupabaseConfigured && (
             <div className="mb-6 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-start gap-2.5">
               <AlertTriangle size={16} className="text-amber-400 shrink-0 mt-0.5" />
@@ -260,8 +206,8 @@ const Register: React.FC = () => {
             </div>
           )}
 
-          {/* Step 1: Account registration with password */}
-          {step === 1 ? (
+          {!isSubmitted ? (
+            /* Signup Form */
             <form onSubmit={handleSignUp} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-textMuted mb-1">Choose Avatar</label>
@@ -340,92 +286,69 @@ const Register: React.FC = () => {
                   </>
                 ) : (
                   <>
-                    <span>Create Account & Send Code</span>
+                    <span>Create Account</span>
                     <ArrowRight size={18} />
                   </>
                 )}
               </button>
             </form>
           ) : (
-            /* Step 2: Enter 6-digit OTP code sent to email */
-            <form onSubmit={handleVerifyOtp} className="space-y-4">
-              <div className="p-3 bg-black/30 border border-white/5 rounded-xl flex items-center gap-3">
-                <img
-                  src={`https://api.dicebear.com/7.x/bottts/svg?seed=${avatarId}`}
-                  alt="avatar"
-                  className="w-10 h-10 rounded-full border border-primary/50"
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-white truncate">{displayName}</p>
-                  <p className="text-xs text-textMuted truncate">{email}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStep(1);
-                    setOtp('');
-                    setError('');
-                  }}
-                  className="text-xs text-primary hover:text-primaryHover transition-colors flex items-center gap-1"
+            /* Check Email Confirmation Screen */
+            <div className="text-center py-4 space-y-6">
+              <div className="w-20 h-20 mx-auto rounded-3xl bg-primary/15 border border-primary/30 flex items-center justify-center text-primary shadow-xl shadow-primary/10 relative">
+                <MailCheck size={40} />
+                <div className="absolute -top-1 -right-1 w-4 h-4 bg-primary rounded-full animate-ping"></div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm text-textMuted">
+                  We've sent an activation link to:
+                </p>
+                <p className="font-semibold text-white text-base bg-black/30 py-2 px-4 rounded-xl border border-white/5 inline-block">
+                  {email}
+                </p>
+                <p className="text-xs text-textMuted/80 pt-1 leading-relaxed">
+                  Please click the link inside the email to verify your address and join the party.
+                </p>
+              </div>
+
+              <div className="pt-2 space-y-3">
+                <a
+                  href="https://mail.google.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-3.5 font-semibold text-white transition-all bg-primary rounded-xl hover:bg-primaryHover shadow-lg shadow-primary/20 active:scale-95 flex items-center justify-center gap-2"
                 >
-                  <ArrowLeft size={12} />
-                  <span>Edit</span>
-                </button>
-              </div>
+                  <span>Open Gmail</span>
+                  <ExternalLink size={16} />
+                </a>
 
-              <div>
-                <label className="block text-sm font-medium text-textMuted mb-1.5">6-Digit Code</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-textMuted">
-                    <KeyRound size={18} />
-                  </div>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    maxLength={6}
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value.replace(/[^0-9]/g, ''))}
-                    className="w-full pl-10 pr-4 py-3 bg-black/30 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-textMain tracking-[0.4em] font-mono text-center text-xl placeholder:text-textMuted/30"
-                    placeholder="••••••"
-                    required
-                    autoFocus
-                  />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={isLoading || otp.length < 6}
-                className="w-full py-3.5 mt-4 font-semibold text-white transition-all bg-primary rounded-xl hover:bg-primaryHover shadow-lg shadow-primary/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {isLoading ? (
-                  <>
-                    <RotateCw size={18} className="animate-spin" />
-                    <span>Verifying...</span>
-                  </>
-                ) : (
-                  <span>Verify & Complete Registration</span>
-                )}
-              </button>
-
-              <div className="text-center pt-2">
                 {resendCooldown > 0 ? (
-                  <p className="text-xs text-textMuted">
-                    Resend code in <span className="text-white font-medium">{resendCooldown}s</span>
+                  <p className="text-xs text-textMuted pt-1">
+                    Resend email in <span className="text-white font-medium">{resendCooldown}s</span>
                   </p>
                 ) : (
                   <button
                     type="button"
-                    onClick={handleResendCode}
+                    onClick={handleResendLink}
                     disabled={isLoading}
                     className="text-xs text-primary hover:text-primaryHover transition-colors font-medium underline underline-offset-2"
                   >
-                    Didn't receive a code? Resend
+                    Didn't receive the email? Resend link
                   </button>
                 )}
               </div>
-            </form>
+
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsSubmitted(false)}
+                  className="text-xs text-textMuted hover:text-white transition-colors"
+                >
+                  Change details / Try another email
+                </button>
+              </div>
+            </div>
           )}
 
           <div className="mt-6 pt-5 border-t border-white/10 text-center">
