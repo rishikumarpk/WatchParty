@@ -6,6 +6,8 @@ import { Upload, Plus, LogIn, LogOut, Play, Settings, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import AvatarPicker from '../components/AvatarPicker';
 
+import { supabase } from '../services/supabase';
+
 const Dashboard: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
   const [roomCode, setRoomCode] = useState('');
@@ -23,7 +25,12 @@ const Dashboard: React.FC = () => {
     }
   }, [navigate]);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      // ignore
+    }
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     navigate('/login');
