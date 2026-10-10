@@ -16,17 +16,20 @@ const ForgotPassword: React.FC = () => {
   const [isSuccess, setIsSuccess] = useState(false);
   const navigate = useNavigate();
 
-  // Listen for Supabase PASSWORD_RECOVERY event when user clicks the reset link in email
+  // Detect recovery mode when landing from Supabase reset password link
   useEffect(() => {
+    if (window.location.hash.includes('type=recovery') || window.location.search.includes('type=recovery')) {
+      setIsRecoveryMode(true);
+    }
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event) => {
-      if (event === 'PASSWORD_RECOVERY') {
+      if (event === 'PASSWORD_RECOVERY' || (event === 'SIGNED_IN' && window.location.hash.includes('type=recovery'))) {
         setIsRecoveryMode(true);
       }
     });
 
-    // Also check if current URL hash or session indicates recovery
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session && window.location.hash.includes('type=recovery')) {
+      if (session && (window.location.hash.includes('type=recovery') || window.location.search.includes('type=recovery'))) {
         setIsRecoveryMode(true);
       }
     });
