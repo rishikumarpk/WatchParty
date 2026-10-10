@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Play, Mail, Lock, Eye, EyeOff, ArrowRight, RotateCw, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Play, Mail, Lock, Eye, EyeOff, ArrowRight, RotateCw, AlertTriangle } from 'lucide-react';
 import { supabase, isSupabaseConfigured, syncWithBackend } from '../services/supabase';
 
 const Login: React.FC = () => {
@@ -8,8 +8,6 @@ const Login: React.FC = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
-  const [resendSuccess, setResendSuccess] = useState('');
-  const [canResendVerification, setCanResendVerification] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
 
@@ -24,8 +22,6 @@ const Login: React.FC = () => {
 
     setIsLoading(true);
     setError('');
-    setResendSuccess('');
-    setCanResendVerification(false);
 
     try {
       const { data, error: sbError } = await supabase.auth.signInWithPassword({
@@ -47,30 +43,11 @@ const Login: React.FC = () => {
     } catch (err: any) {
       console.error('Login error:', err);
       const msg = err.message || 'Invalid email or password';
-      setError(msg);
-      if (msg.toLowerCase().includes('confirm') || msg.toLowerCase().includes('not confirmed')) {
-        setCanResendVerification(true);
+      if (msg.toLowerCase().includes('not confirmed') || msg.toLowerCase().includes('confirm')) {
+        setError("Email confirmation is still enabled in your Supabase project. To allow direct login without email verification, turn off 'Confirm email' under Authentication -> Providers -> Email in your Supabase Dashboard.");
+      } else {
+        setError(msg);
       }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleResendVerification = async () => {
-    try {
-      setIsLoading(true);
-      const { error: sbError } = await supabase.auth.resend({
-        type: 'signup',
-        email: email.trim(),
-        options: {
-          emailRedirectTo: `${window.location.origin}/dashboard`,
-        },
-      });
-      if (sbError) throw sbError;
-      setResendSuccess('Verification link resent! Please check your email inbox.');
-      setCanResendVerification(false);
-    } catch (err: any) {
-      setError(err.message || 'Failed to resend verification link');
     } finally {
       setIsLoading(false);
     }
@@ -136,26 +113,8 @@ const Login: React.FC = () => {
 
           {/* Error Message */}
           {error && (
-            <div className="p-3 mb-5 text-sm text-red-200 bg-red-900/50 border border-red-500/50 rounded-xl text-center">
-              <p>{error}</p>
-              {canResendVerification && (
-                <button
-                  type="button"
-                  onClick={handleResendVerification}
-                  disabled={isLoading}
-                  className="mt-2 text-xs text-primary underline underline-offset-2 hover:text-primaryHover font-medium block mx-auto"
-                >
-                  Resend verification email
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Success Message */}
-          {resendSuccess && (
-            <div className="p-3 mb-5 text-sm text-emerald-200 bg-emerald-900/40 border border-emerald-500/40 rounded-xl flex items-center justify-center gap-2">
-              <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
-              <span>{resendSuccess}</span>
+            <div className="p-3 mb-5 text-sm text-red-200 bg-red-900/50 border border-red-500/50 rounded-xl text-center leading-relaxed">
+              {error}
             </div>
           )}
 

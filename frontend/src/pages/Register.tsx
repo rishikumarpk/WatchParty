@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Play, Mail, User, Lock, Eye, EyeOff, ArrowRight, RotateCw, AlertTriangle, CheckCircle2, MailCheck, ExternalLink } from 'lucide-react';
+import { Play, Mail, User, Lock, Eye, EyeOff, ArrowRight, RotateCw, AlertTriangle } from 'lucide-react';
 import AvatarPicker from '../components/AvatarPicker';
 import { supabase, isSupabaseConfigured, syncWithBackend } from '../services/supabase';
 
@@ -10,45 +10,9 @@ const Register: React.FC = () => {
   const [displayName, setDisplayName] = useState('');
   const [avatarId, setAvatarId] = useState('avatar_1');
   const [showPassword, setShowPassword] = useState(false);
-  const [isSubmitted, setIsSubmitted] = useState(false);
   const [error, setError] = useState('');
-  const [infoMessage, setInfoMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [resendCooldown, setResendCooldown] = useState(0);
   const navigate = useNavigate();
-
-  // Listen for Supabase session changes (e.g. user clicks verification link in email)
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session && (event === 'SIGNED_IN' || event === 'USER_UPDATED')) {
-        try {
-          setIsLoading(true);
-          await syncWithBackend(session, {
-            display_name: displayName,
-            avatar_id: avatarId,
-          });
-          navigate('/dashboard');
-        } catch (err: any) {
-          setError(err.response?.data?.error || 'Failed to sync session with backend');
-        } finally {
-          setIsLoading(false);
-        }
-      }
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [navigate, displayName, avatarId]);
-
-  // Countdown timer for resending verification email
-  useEffect(() => {
-    if (resendCooldown <= 0) return;
-    const timer = setInterval(() => {
-      setResendCooldown((prev) => Math.max(0, prev - 1));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [resendCooldown]);
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,9 +30,9 @@ const Register: React.FC = () => {
 
     setIsLoading(true);
     setError('');
-    setInfoMessage('');
 
     try {
+      // 1. Create account in Supabase
       const { data, error: sbError } = await supabase.auth.signUp({
         email: email.trim(),
         password,
@@ -77,7 +41,6 @@ const Register: React.FC = () => {
             display_name: displayName.trim(),
             avatar_id: avatarId,
           },
-          emailRedirectTo: `${window.location.origin}/dashboard`,
         },
       });
 
@@ -85,48 +48,34 @@ const Register: React.FC = () => {
         throw sbError;
       }
 
-      // If email confirmation is disabled in Supabase, session is returned immediately
-      if (data.session) {
-        await syncWithBackend(data.session, {
+      let session = data.session;
+
+      // 2. If session wasn't returned immediately, attempt instant sign in
+      if (!session) {
+        const loginRes = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
+        if (loginRes.data?.session) {
+          session = loginRes.data.session;
+        }
+      }
+
+      if (session) {
+        // 3. Synchronize user profile with backend database
+        await syncWithBackend(session, {
           display_name: displayName.trim(),
           avatar_id: avatarId,
         });
         navigate('/dashboard');
-        return;
+      } else {
+        setError(
+          "Account created! To allow instant login without email verification, make sure 'Confirm email' is turned OFF in your Supabase Dashboard (Authentication -> Providers -> Email)."
+        );
       }
-
-      // Otherwise, the verification email was sent
-      setIsSubmitted(true);
-      setResendCooldown(60);
-      setInfoMessage(`Verification link sent to ${email.trim()}`);
     } catch (err: any) {
       console.error('Registration error:', err);
       setError(err.message || 'Failed to register account');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleResendLink = async () => {
-    if (resendCooldown > 0 || isLoading) return;
-
-    setIsLoading(true);
-    setError('');
-    try {
-      const { error: sbError } = await supabase.auth.resend({
-        type: 'signup',
-        email: email.trim(),
-        options: {
-          emailRedirectTo: `${window.location.origin}/dashboard`,
-        },
-      });
-
-      if (sbError) throw sbError;
-
-      setResendCooldown(60);
-      setInfoMessage('A fresh verification link has been sent to your email.');
-    } catch (err: any) {
-      setError(err.message || 'Failed to resend verification link');
     } finally {
       setIsLoading(false);
     }
@@ -170,12 +119,10 @@ const Register: React.FC = () => {
           {/* Heading */}
           <div className="text-center mb-6">
             <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary via-white to-white">
-              {isSubmitted ? 'Check Your Email' : 'Create Account'}
+              Create Account
             </h1>
             <p className="text-textMuted text-sm mt-1.5">
-              {isSubmitted
-                ? 'We sent a confirmation link to your inbox'
-                : 'Choose your avatar, enter your details and password'}
+              Choose your avatar, pick a name, and start watching
             </p>
           </div>
 
@@ -199,157 +146,90 @@ const Register: React.FC = () => {
             </div>
           )}
 
-          {infoMessage && (
-            <div className="p-3 mb-5 text-sm text-emerald-200 bg-emerald-900/40 border border-emerald-500/40 rounded-xl flex items-center justify-center gap-2">
-              <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
-              <span>{infoMessage}</span>
+          <form onSubmit={handleSignUp} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-textMuted mb-1">Choose Avatar</label>
+              <AvatarPicker selectedAvatar={avatarId} onSelect={setAvatarId} />
             </div>
-          )}
 
-          {!isSubmitted ? (
-            /* Signup Form */
-            <form onSubmit={handleSignUp} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-textMuted mb-1">Choose Avatar</label>
-                <AvatarPicker selectedAvatar={avatarId} onSelect={setAvatarId} />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-textMuted mb-1.5">Display Name</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-textMuted">
-                    <User size={18} />
-                  </div>
-                  <input
-                    type="text"
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 bg-black/30 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-textMain text-sm placeholder:text-textMuted/50"
-                    placeholder="MovieBuff42"
-                    required
-                  />
+            <div>
+              <label className="block text-sm font-medium text-textMuted mb-1.5">Display Name</label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-textMuted">
+                  <User size={18} />
                 </div>
+                <input
+                  type="text"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 bg-black/30 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-textMain text-sm placeholder:text-textMuted/50"
+                  placeholder="MovieBuff42"
+                  required
+                />
               </div>
+            </div>
 
-              <div>
-                <label className="block text-sm font-medium text-textMuted mb-1.5">Email Address</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-textMuted">
-                    <Mail size={18} />
-                  </div>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 bg-black/30 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-textMain text-sm placeholder:text-textMuted/50"
-                    placeholder="you@example.com"
-                    required
-                  />
+            <div>
+              <label className="block text-sm font-medium text-textMuted mb-1.5">Email Address</label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-textMuted">
+                  <Mail size={18} />
                 </div>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 bg-black/30 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-textMain text-sm placeholder:text-textMuted/50"
+                  placeholder="you@example.com"
+                  required
+                />
               </div>
+            </div>
 
-              <div>
-                <label className="block text-sm font-medium text-textMuted mb-1.5">Password</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-textMuted">
-                    <Lock size={18} />
-                  </div>
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-10 pr-11 py-3 bg-black/30 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-textMain text-sm placeholder:text-textMuted/50"
-                    placeholder="At least 6 characters"
-                    required
-                    minLength={6}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-textMuted hover:text-white transition-colors"
-                    aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  >
-                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
+            <div>
+              <label className="block text-sm font-medium text-textMuted mb-1.5">Password</label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-textMuted">
+                  <Lock size={18} />
                 </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full py-3.5 mt-4 font-semibold text-white transition-all bg-primary rounded-xl hover:bg-primaryHover shadow-lg shadow-primary/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {isLoading ? (
-                  <>
-                    <RotateCw size={18} className="animate-spin" />
-                    <span>Creating Account...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Create Account</span>
-                    <ArrowRight size={18} />
-                  </>
-                )}
-              </button>
-            </form>
-          ) : (
-            /* Check Email Confirmation Screen */
-            <div className="text-center py-4 space-y-6">
-              <div className="w-20 h-20 mx-auto rounded-3xl bg-primary/15 border border-primary/30 flex items-center justify-center text-primary shadow-xl shadow-primary/10 relative">
-                <MailCheck size={40} />
-                <div className="absolute -top-1 -right-1 w-4 h-4 bg-primary rounded-full animate-ping"></div>
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-sm text-textMuted">
-                  We've sent an activation link to:
-                </p>
-                <p className="font-semibold text-white text-base bg-black/30 py-2 px-4 rounded-xl border border-white/5 inline-block">
-                  {email}
-                </p>
-                <p className="text-xs text-textMuted/80 pt-1 leading-relaxed">
-                  Please click the link inside the email to verify your address and join the party.
-                </p>
-              </div>
-
-              <div className="pt-2 space-y-3">
-                <a
-                  href="https://mail.google.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full py-3.5 font-semibold text-white transition-all bg-primary rounded-xl hover:bg-primaryHover shadow-lg shadow-primary/20 active:scale-95 flex items-center justify-center gap-2"
-                >
-                  <span>Open Gmail</span>
-                  <ExternalLink size={16} />
-                </a>
-
-                {resendCooldown > 0 ? (
-                  <p className="text-xs text-textMuted pt-1">
-                    Resend email in <span className="text-white font-medium">{resendCooldown}s</span>
-                  </p>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleResendLink}
-                    disabled={isLoading}
-                    className="text-xs text-primary hover:text-primaryHover transition-colors font-medium underline underline-offset-2"
-                  >
-                    Didn't receive the email? Resend link
-                  </button>
-                )}
-              </div>
-
-              <div className="pt-2">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full pl-10 pr-11 py-3 bg-black/30 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-textMain text-sm placeholder:text-textMuted/50"
+                  placeholder="At least 6 characters"
+                  required
+                  minLength={6}
+                />
                 <button
                   type="button"
-                  onClick={() => setIsSubmitted(false)}
-                  className="text-xs text-textMuted hover:text-white transition-colors"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-textMuted hover:text-white transition-colors"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
-                  Change details / Try another email
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
             </div>
-          )}
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full py-3.5 mt-4 font-semibold text-white transition-all bg-primary rounded-xl hover:bg-primaryHover shadow-lg shadow-primary/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {isLoading ? (
+                <>
+                  <RotateCw size={18} className="animate-spin" />
+                  <span>Creating Account...</span>
+                </>
+              ) : (
+                <>
+                  <span>Create Account</span>
+                  <ArrowRight size={18} />
+                </>
+              )}
+            </button>
+          </form>
 
           <div className="mt-6 pt-5 border-t border-white/10 text-center">
             <p className="text-sm text-textMuted">
