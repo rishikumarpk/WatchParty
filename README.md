@@ -10,6 +10,7 @@
   [![Node.js](https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
   [![Express](https://img.shields.io/badge/Express-000000?style=for-the-badge&logo=express&logoColor=white)](https://expressjs.com/)
   [![Socket.io](https://img.shields.io/badge/Socket.io-010101?style=for-the-badge&logo=socketdotio&logoColor=white)](https://socket.io/)
+  [![Supabase](https://img.shields.io/badge/Supabase-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)](https://supabase.com/)
   [![Prisma](https://img.shields.io/badge/Prisma-2D3748?style=for-the-badge&logo=prisma&logoColor=white)](https://www.prisma.io/)
   [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 
@@ -35,7 +36,7 @@
 *   **🔒 Cryptographic Video Matching (Zero-Cloud Storage)**: Videos remain completely on users' local machines. WatchTogether computes a client-side SHA-256 hash of the selected video file to guarantee everyone in the room has the identical video, preserving bandwidth and privacy.
 *   **🔄 Sub-Second Real-Time Playback Synchronization**: Socket.IO-powered playback triggers (play, pause, seek) broadcast immediately across the room.
 *   **📈 Adaptive Drift Correction**: The system continuously monitors timeline deviation. Small sync differences are subtly fixed by modifying the playback rate (speeding up or slowing down by 5%) rather than using jarring media jumps.
-*   **📨 Secure OAuth2 Email Authentication**: Supports user registration and password recovery using short-lived 6-digit OTP verification codes generated securely and sent via the Gmail API with OAuth2.
+*   **⚡ Modern Supabase Authentication**: Direct email and password registration and login powered by Supabase Auth, with seamless database session synchronization and secure password recovery via email links.
 *   **💬 Interactive Room Chat**: Integrated text chat showcasing participant activity logs (e.g., when a user pauses, skips, or joins) along with unique DiceBear bots avatars.
 *   **💅 Sleek, Futuristic Dark-Theme UI**: High-fidelity dark mode designed using Tailwind CSS, backdrop blurs, glassmorphic surfaces, and micro-interactions.
 
@@ -130,8 +131,8 @@ sequenceDiagram
 ### Prerequisites
 *   Node.js (v18+)
 *   npm or yarn
-*   A running PostgreSQL instance (or Neon DB account)
-*   Google Developer Console account (for Gmail API OAuth2 tokens)
+*   A running PostgreSQL instance (or free [Neon DB](https://neon.tech/) account)
+*   A free [Supabase](https://supabase.com/) account (for user authentication)
 
 ### 1. Clone the repository
 ```bash
@@ -153,13 +154,11 @@ DATABASE_URL="postgresql://username:password@hostname:5432/dbname?sslmode=requir
 
 # JSON Web Token Secret
 JWT_SECRET="your_secure_jwt_secret"
-
-# SMTP & Google OAuth credentials for Gmail API OTP
-EMAIL="your-gmail-address@gmail.com"
 PORT=5001
-GOOGLE_CLIENT_ID="your_google_client_id.apps.googleusercontent.com"
-GOOGLE_CLIENT_SECRET="your_google_client_secret"
-GOOGLE_REFRESH_TOKEN="your_google_refresh_token"
+
+# Supabase Auth Configuration (Project Settings -> API)
+SUPABASE_URL="https://your-project-id.supabase.co"
+SUPABASE_ANON_KEY="your-supabase-anon-key"
 ```
 
 #### Database Migration & Initialization
@@ -169,25 +168,17 @@ npx prisma db push
 npx prisma generate
 ```
 
-#### How to Generate Gmail OAuth2 Credentials
-WatchTogether uses Google OAuth2 credentials to send verified registration and password recovery emails via the official Gmail API.
-1.  Go to the [Google Cloud Console](https://console.cloud.google.com/).
-2.  Create a project and search for **Gmail API**, then click **Enable**.
-3.  Navigate to **OAuth Consent Screen**:
-    *   Set user type to **External**.
-    *   Add your developer email and add the scope `https://mail.google.com/`.
-    *   Add your own email as a **Test User** (critical while in "Testing" mode).
-4.  Navigate to **Credentials**:
-    *   Create Credentials -> **OAuth Client ID**.
-    *   Application type: **Web Application**.
-    *   Authorized Redirect URI: `https://developers.google.com/oauthplayground`.
-    *   Copy the generated `Client ID` and `Client Secret` to your backend `.env`.
-5.  Get the `Refresh Token`:
-    *   Go to [OAuth2 Playground](https://developers.google.com/oauthplayground).
-    *   Click the gear icon (top right), check **Use your own OAuth credentials**, and input your Client ID and Client Secret.
-    *   In the Left Pane, type `https://mail.google.com/` in the scopes box and click **Authorize APIs**.
-    *   Authorize using your Test User Google Account.
-    *   Exchange the authorization code for tokens, copy the `Refresh Token`, and paste it into your backend `.env`.
+#### Supabase Auth Setup
+WatchTogether uses Supabase Auth to manage user accounts and secure password recovery.
+1.  Go to the [Supabase Dashboard](https://supabase.com/dashboard) and create a new project.
+2.  Navigate to **Project Settings** (gear icon) $\rightarrow$ **API**.
+    *   Copy the **Project URL** and paste it into `SUPABASE_URL` in both `backend/.env` and `frontend/.env`.
+    *   Copy the **anon public key** and paste it into `SUPABASE_ANON_KEY` in both `backend/.env` and `frontend/.env`.
+3.  Navigate to **Authentication** $\rightarrow$ **Providers** $\rightarrow$ **Email**:
+    *   Ensure **Enable Email provider** is turned **ON**.
+    *   Toggle **Confirm email** to **OFF** to allow instant account creation without requiring external SMTP configuration.
+4.  Navigate to **Authentication** $\rightarrow$ **URL Configuration**:
+    *   Add your redirect URLs under **Redirect URLs** (e.g. `http://localhost:5173/forgot-password` and `https://<your-app>.vercel.app/forgot-password`).
 
 ### 3. Frontend Configuration
 Navigate to the `frontend` directory:
@@ -198,8 +189,12 @@ npm install
 
 Create a `.env` file in the `frontend` folder:
 ```env
-# Override backend URL (defaults to http://localhost:5001)
+# Backend API URL (defaults to http://localhost:5001)
 VITE_API_URL="http://localhost:5001"
+
+# Supabase Client Configuration
+VITE_SUPABASE_URL="https://your-project-id.supabase.co"
+VITE_SUPABASE_ANON_KEY="your-supabase-anon-key"
 ```
 
 ---
@@ -211,6 +206,7 @@ To start the local development environment:
 ### Run Backend
 In the `backend` directory:
 ```bash
+cd backend
 npm run dev
 ```
 The server will boot up and listen on port `5001`.
@@ -218,15 +214,16 @@ The server will boot up and listen on port `5001`.
 ### Run Frontend
 In the `frontend` directory:
 ```bash
+cd frontend
 npm run dev
 ```
-The client dashboard will open at `http://localhost:5173` (or the next available port).
+The client will open at `http://localhost:5173`.
 
 ---
 
 ## 📈 Drift Correction Details
 
-To minimize jarring jumps, WatchTogether implements a **dual-tier sync algorithm** inside [VideoPlayer.tsx](file:///Users/rishi/Documents/WatchParty/watch-together/frontend/src/components/VideoPlayer.tsx#L70-L90):
+To minimize jarring jumps, WatchTogether implements a **dual-tier sync algorithm** inside [VideoPlayer.tsx](file:///Users/rishi/GIT%20REPOS/WatchParty/watch-together/frontend/src/components/VideoPlayer.tsx):
 
 ```typescript
 const handleSync = (data: any) => {
@@ -257,7 +254,7 @@ const handleSync = (data: any) => {
 
 ## 🗄️ Database Schema
 
-WatchTogether utilizes a PostgreSQL database. Below is the relational mapping of the database models structured in `Prisma`:
+WatchTogether utilizes PostgreSQL via `Prisma`:
 
 ```
 +------------------------------------+
@@ -283,17 +280,6 @@ WatchTogether utilizes a PostgreSQL database. Below is the relational mapping of
 | video_hash       |   | message (String)   |
 | created_at       |   | timestamp          |
 +------------------+   +--------------------+
-
-+------------------------------------+
-|          VerificationCode          |
-+------------------------------------+
-| id (UUID) [PK]                     |
-| email (String) [Unique]            |
-| code (String)                      |
-| data (String) [Nullable json]      |
-| expiresAt (DateTime)               |
-| createdAt (DateTime)               |
-+------------------------------------+
 ```
 
 ---
