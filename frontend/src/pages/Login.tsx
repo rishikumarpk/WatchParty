@@ -1,98 +1,32 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Play, Mail, KeyRound, ArrowRight, RotateCw, AlertTriangle, ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { Play, Mail, Lock, Eye, EyeOff, ArrowRight, RotateCw, AlertTriangle } from 'lucide-react';
 import { supabase, isSupabaseConfigured, syncWithBackend } from '../services/supabase';
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
-  const [otp, setOtp] = useState('');
-  const [step, setStep] = useState<1 | 2>(1);
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
-  const [infoMessage, setInfoMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [resendCooldown, setResendCooldown] = useState(0);
   const navigate = useNavigate();
 
-  // Listen for Supabase session changes (e.g. if user clicks Magic Link in email)
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session && (event === 'SIGNED_IN' || event === 'USER_UPDATED')) {
-        try {
-          setIsLoading(true);
-          await syncWithBackend(session);
-          navigate('/dashboard');
-        } catch (err: any) {
-          setError(err.response?.data?.error || 'Failed to sync authentication session with server');
-        } finally {
-          setIsLoading(false);
-        }
-      }
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [navigate]);
-
-  // Handle countdown timer for OTP resend
-  useEffect(() => {
-    if (resendCooldown <= 0) return;
-    const timer = setInterval(() => {
-      setResendCooldown((prev) => Math.max(0, prev - 1));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [resendCooldown]);
-
-  // Step 1: Send OTP to email via Supabase
-  const handleSendOtp = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim()) return;
+    if (!email.trim() || !password) return;
 
     if (!isSupabaseConfigured) {
-      setError('Supabase is not configured yet. Please add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to frontend/.env');
+      setError('Supabase credentials are not configured yet. Please add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to frontend/.env');
       return;
     }
 
     setIsLoading(true);
     setError('');
-    setInfoMessage('');
 
     try {
-      const { error: sbError } = await supabase.auth.signInWithOtp({
+      const { data, error: sbError } = await supabase.auth.signInWithPassword({
         email: email.trim(),
-        options: {
-          emailRedirectTo: `${window.location.origin}/dashboard`,
-        },
-      });
-
-      if (sbError) {
-        throw sbError;
-      }
-
-      setStep(2);
-      setResendCooldown(60);
-      setInfoMessage(`We sent a 6-digit verification code to ${email.trim()}`);
-    } catch (err: any) {
-      console.error('Supabase OTP send error:', err);
-      setError(err.message || 'Failed to send verification code. Please verify your email address.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Step 2: Verify OTP via Supabase & sync with backend
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!otp.trim()) return;
-
-    setIsLoading(true);
-    setError('');
-
-    try {
-      const { data, error: sbError } = await supabase.auth.verifyOtp({
-        email: email.trim(),
-        token: otp.trim(),
-        type: 'email',
+        password,
       });
 
       if (sbError) {
@@ -100,40 +34,15 @@ const Login: React.FC = () => {
       }
 
       if (!data.session) {
-        throw new Error('No session returned. Please try again.');
+        throw new Error('No session returned. Please verify your credentials.');
       }
 
-      // Synchronize with database and obtain application token
+      // Synchronize session with database and save app token
       await syncWithBackend(data.session);
       navigate('/dashboard');
     } catch (err: any) {
-      console.error('Supabase OTP verify error:', err);
-      setError(err.response?.data?.error || err.message || 'Invalid or expired verification code');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Resend OTP code
-  const handleResendCode = async () => {
-    if (resendCooldown > 0 || isLoading) return;
-
-    setIsLoading(true);
-    setError('');
-    try {
-      const { error: sbError } = await supabase.auth.signInWithOtp({
-        email: email.trim(),
-        options: {
-          emailRedirectTo: `${window.location.origin}/dashboard`,
-        },
-      });
-
-      if (sbError) throw sbError;
-
-      setResendCooldown(60);
-      setInfoMessage('A new verification code has been sent to your email.');
-    } catch (err: any) {
-      setError(err.message || 'Failed to resend code');
+      console.error('Login error:', err);
+      setError(err.message || 'Invalid email or password');
     } finally {
       setIsLoading(false);
     }
@@ -177,17 +86,10 @@ const Login: React.FC = () => {
 
           {/* Heading */}
           <div className="text-center mb-6">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/15 border border-primary/30 text-xs font-semibold text-primary mb-3">
-              <span>⚡ Supabase Passwordless Auth</span>
-            </div>
             <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary via-white to-white">
-              {step === 1 ? 'Welcome Back' : 'Enter Verification Code'}
+              Welcome Back
             </h1>
-            <p className="text-textMuted text-sm mt-1.5">
-              {step === 1
-                ? 'Sign in securely using email OTP code'
-                : `Enter the 6-digit code sent to ${email}`}
-            </p>
+            <p className="text-textMuted text-sm mt-1.5">Sign in to join the watch party</p>
           </div>
 
           {/* Setup Alert if Supabase Credentials are missing */}
@@ -205,132 +107,83 @@ const Login: React.FC = () => {
             </div>
           )}
 
-          {/* Error & Info Alerts */}
+          {/* Error Message */}
           {error && (
             <div className="p-3 mb-5 text-sm text-red-200 bg-red-900/50 border border-red-500/50 rounded-xl text-center">
               {error}
             </div>
           )}
 
-          {infoMessage && (
-            <div className="p-3 mb-5 text-sm text-emerald-200 bg-emerald-900/40 border border-emerald-500/40 rounded-xl flex items-center justify-center gap-2">
-              <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
-              <span>{infoMessage}</span>
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-textMuted mb-1.5">Email Address</label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-textMuted">
+                  <Mail size={18} />
+                </div>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 bg-black/30 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-textMain placeholder:text-textMuted/50 text-sm"
+                  placeholder="you@example.com"
+                  required
+                  autoFocus
+                />
+              </div>
             </div>
-          )}
 
-          {/* Step 1: Request OTP */}
-          {step === 1 && (
-            <form onSubmit={handleSendOtp} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-textMuted mb-1.5">Email Address</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-textMuted">
-                    <Mail size={18} />
-                  </div>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 bg-black/30 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-textMain placeholder:text-textMuted/50 text-sm"
-                    placeholder="you@example.com"
-                    required
-                    autoFocus
-                  />
-                </div>
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-sm font-medium text-textMuted">Password</label>
+                <Link
+                  to="/forgot-password"
+                  className="text-xs text-primary hover:text-primaryHover transition-colors font-medium"
+                >
+                  Forgot password?
+                </Link>
               </div>
-
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full py-3 mt-2 font-semibold text-white transition-all bg-primary rounded-xl hover:bg-primaryHover shadow-lg shadow-primary/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {isLoading ? (
-                  <>
-                    <RotateCw size={18} className="animate-spin" />
-                    <span>Sending Code...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Send Login Code</span>
-                    <ArrowRight size={18} />
-                  </>
-                )}
-              </button>
-            </form>
-          )}
-
-          {/* Step 2: Verify 6-digit OTP */}
-          {step === 2 && (
-            <form onSubmit={handleVerifyOtp} className="space-y-4">
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-sm font-medium text-textMuted">6-Digit Code</label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setStep(1);
-                      setOtp('');
-                      setError('');
-                    }}
-                    className="text-xs text-primary hover:text-primaryHover transition-colors flex items-center gap-1"
-                  >
-                    <ArrowLeft size={12} />
-                    <span>Change email</span>
-                  </button>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-textMuted">
+                  <Lock size={18} />
                 </div>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-textMuted">
-                    <KeyRound size={18} />
-                  </div>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    maxLength={6}
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value.replace(/[^0-9]/g, ''))}
-                    className="w-full pl-10 pr-4 py-3 bg-black/30 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-textMain tracking-[0.4em] font-mono text-center text-xl placeholder:text-textMuted/30"
-                    placeholder="••••••"
-                    required
-                    autoFocus
-                  />
-                </div>
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full pl-10 pr-11 py-3 bg-black/30 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-textMain placeholder:text-textMuted/50 text-sm"
+                  placeholder="••••••••"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-textMuted hover:text-white transition-colors"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
               </div>
+            </div>
 
-              <button
-                type="submit"
-                disabled={isLoading || otp.length < 6}
-                className="w-full py-3 mt-2 font-semibold text-white transition-all bg-primary rounded-xl hover:bg-primaryHover shadow-lg shadow-primary/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {isLoading ? (
-                  <>
-                    <RotateCw size={18} className="animate-spin" />
-                    <span>Verifying...</span>
-                  </>
-                ) : (
-                  <span>Verify & Sign In</span>
-                )}
-              </button>
-
-              <div className="text-center pt-2">
-                {resendCooldown > 0 ? (
-                  <p className="text-xs text-textMuted">
-                    Resend code in <span className="text-white font-medium">{resendCooldown}s</span>
-                  </p>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleResendCode}
-                    disabled={isLoading}
-                    className="text-xs text-primary hover:text-primaryHover transition-colors font-medium underline underline-offset-2"
-                  >
-                    Didn't receive a code? Resend
-                  </button>
-                )}
-              </div>
-            </form>
-          )}
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full py-3.5 mt-2 font-semibold text-white transition-all bg-primary rounded-xl hover:bg-primaryHover shadow-lg shadow-primary/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {isLoading ? (
+                <>
+                  <RotateCw size={18} className="animate-spin" />
+                  <span>Signing In...</span>
+                </>
+              ) : (
+                <>
+                  <span>Sign In</span>
+                  <ArrowRight size={18} />
+                </>
+              )}
+            </button>
+          </form>
 
           <div className="mt-6 pt-5 border-t border-white/10 text-center">
             <p className="text-sm text-textMuted">

@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Play, Mail, User, KeyRound, ArrowRight, RotateCw, AlertTriangle, ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { Play, Mail, User, Lock, Eye, EyeOff, KeyRound, ArrowRight, RotateCw, AlertTriangle, ArrowLeft, CheckCircle2 } from 'lucide-react';
 import AvatarPicker from '../components/AvatarPicker';
 import { supabase, isSupabaseConfigured, syncWithBackend } from '../services/supabase';
 
 const Register: React.FC = () => {
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [avatarId, setAvatarId] = useState('avatar_1');
+  const [showPassword, setShowPassword] = useState(false);
   const [otp, setOtp] = useState('');
   const [step, setStep] = useState<1 | 2>(1);
   const [error, setError] = useState('');
@@ -16,7 +18,7 @@ const Register: React.FC = () => {
   const [resendCooldown, setResendCooldown] = useState(0);
   const navigate = useNavigate();
 
-  // Listen for Supabase session changes (e.g. Magic link clicked in email)
+  // Listen for Supabase session changes (e.g. if user clicks confirmation link directly in email)
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session && (event === 'SIGNED_IN' || event === 'USER_UPDATED')) {
@@ -49,10 +51,15 @@ const Register: React.FC = () => {
     return () => clearInterval(timer);
   }, [resendCooldown]);
 
-  // Step 1: Send OTP to email with user profile metadata
-  const handleSendOtp = async (e: React.FormEvent) => {
+  // Step 1: Create account with password and trigger email OTP verification
+  const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim() || !displayName.trim()) return;
+    if (!email.trim() || !displayName.trim() || !password) return;
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
 
     if (!isSupabaseConfigured) {
       setError('Supabase is not configured yet. Please add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to frontend/.env');
@@ -64,8 +71,9 @@ const Register: React.FC = () => {
     setInfoMessage('');
 
     try {
-      const { error: sbError } = await supabase.auth.signInWithOtp({
+      const { data, error: sbError } = await supabase.auth.signUp({
         email: email.trim(),
+        password,
         options: {
           data: {
             display_name: displayName.trim(),
@@ -79,18 +87,29 @@ const Register: React.FC = () => {
         throw sbError;
       }
 
+      // If email confirmation is disabled in Supabase, session is returned immediately
+      if (data.session) {
+        await syncWithBackend(data.session, {
+          display_name: displayName.trim(),
+          avatar_id: avatarId,
+        });
+        navigate('/dashboard');
+        return;
+      }
+
+      // Otherwise, an OTP code was sent to the email
       setStep(2);
       setResendCooldown(60);
       setInfoMessage(`Verification code sent to ${email.trim()}`);
     } catch (err: any) {
-      console.error('Supabase registration error:', err);
-      setError(err.message || 'Failed to send verification code. Please check your email.');
+      console.error('Registration error:', err);
+      setError(err.message || 'Failed to register account');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Step 2: Verify OTP via Supabase & sync user profile
+  // Step 2: Verify email OTP code
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!otp.trim()) return;
@@ -99,18 +118,32 @@ const Register: React.FC = () => {
     setError('');
 
     try {
-      const { data, error: sbError } = await supabase.auth.verifyOtp({
+      // First try signup verification
+      let { data, error: sbError } = await supabase.auth.verifyOtp({
         email: email.trim(),
         token: otp.trim(),
-        type: 'email',
+        type: 'signup',
       });
+
+      // If type 'signup' fails, fallback to 'email' type
+      if (sbError) {
+        const fallback = await supabase.auth.verifyOtp({
+          email: email.trim(),
+          token: otp.trim(),
+          type: 'email',
+        });
+        if (!fallback.error) {
+          data = fallback.data;
+          sbError = null;
+        }
+      }
 
       if (sbError) {
         throw sbError;
       }
 
-      if (!data.session) {
-        throw new Error('No session returned. Please try again.');
+      if (!data?.session) {
+        throw new Error('Verification completed, but no session returned. Please sign in.');
       }
 
       // Synchronize with database and obtain application token
@@ -121,7 +154,7 @@ const Register: React.FC = () => {
 
       navigate('/dashboard');
     } catch (err: any) {
-      console.error('Supabase verify error:', err);
+      console.error('OTP verify error:', err);
       setError(err.response?.data?.error || err.message || 'Invalid or expired verification code');
     } finally {
       setIsLoading(false);
@@ -135,15 +168,9 @@ const Register: React.FC = () => {
     setIsLoading(true);
     setError('');
     try {
-      const { error: sbError } = await supabase.auth.signInWithOtp({
+      const { error: sbError } = await supabase.auth.resend({
+        type: 'signup',
         email: email.trim(),
-        options: {
-          data: {
-            display_name: displayName.trim(),
-            avatar_id: avatarId,
-          },
-          emailRedirectTo: `${window.location.origin}/dashboard`,
-        },
       });
 
       if (sbError) throw sbError;
@@ -195,15 +222,12 @@ const Register: React.FC = () => {
 
           {/* Header */}
           <div className="text-center mb-6">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/15 border border-primary/30 text-xs font-semibold text-primary mb-3">
-              <span>⚡ Supabase Passwordless Registration</span>
-            </div>
             <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary via-white to-white">
               {step === 1 ? 'Create Account' : 'Verify Email'}
             </h1>
             <p className="text-textMuted text-sm mt-1.5">
               {step === 1
-                ? 'Choose your avatar and enter your details to get started'
+                ? 'Create your password & verify your email with OTP'
                 : `Enter the 6-digit code sent to ${email}`}
             </p>
           </div>
@@ -236,9 +260,9 @@ const Register: React.FC = () => {
             </div>
           )}
 
-          {/* Step 1: Profile info and Email */}
+          {/* Step 1: Account registration with password */}
           {step === 1 ? (
-            <form onSubmit={handleSendOtp} className="space-y-4">
+            <form onSubmit={handleSignUp} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-textMuted mb-1">Choose Avatar</label>
                 <AvatarPicker selectedAvatar={avatarId} onSelect={setAvatarId} />
@@ -278,26 +302,52 @@ const Register: React.FC = () => {
                 </div>
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-textMuted mb-1.5">Password</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-textMuted">
+                    <Lock size={18} />
+                  </div>
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full pl-10 pr-11 py-3 bg-black/30 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-textMain text-sm placeholder:text-textMuted/50"
+                    placeholder="At least 6 characters"
+                    required
+                    minLength={6}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-textMuted hover:text-white transition-colors"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-3 mt-4 font-semibold text-white transition-all bg-primary rounded-xl hover:bg-primaryHover shadow-lg shadow-primary/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full py-3.5 mt-4 font-semibold text-white transition-all bg-primary rounded-xl hover:bg-primaryHover shadow-lg shadow-primary/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {isLoading ? (
                   <>
                     <RotateCw size={18} className="animate-spin" />
-                    <span>Sending Code...</span>
+                    <span>Creating Account...</span>
                   </>
                 ) : (
                   <>
-                    <span>Continue & Send Code</span>
+                    <span>Create Account & Send Code</span>
                     <ArrowRight size={18} />
                   </>
                 )}
               </button>
             </form>
           ) : (
-            /* Step 2: Enter 6-digit OTP code */
+            /* Step 2: Enter 6-digit OTP code sent to email */
             <form onSubmit={handleVerifyOtp} className="space-y-4">
               <div className="p-3 bg-black/30 border border-white/5 rounded-xl flex items-center gap-3">
                 <img
@@ -347,7 +397,7 @@ const Register: React.FC = () => {
               <button
                 type="submit"
                 disabled={isLoading || otp.length < 6}
-                className="w-full py-3 mt-4 font-semibold text-white transition-all bg-primary rounded-xl hover:bg-primaryHover shadow-lg shadow-primary/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full py-3.5 mt-4 font-semibold text-white transition-all bg-primary rounded-xl hover:bg-primaryHover shadow-lg shadow-primary/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {isLoading ? (
                   <>
@@ -355,7 +405,7 @@ const Register: React.FC = () => {
                     <span>Verifying...</span>
                   </>
                 ) : (
-                  <span>Verify & Create Account</span>
+                  <span>Verify & Complete Registration</span>
                 )}
               </button>
 
